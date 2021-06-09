@@ -51,7 +51,7 @@ Order by TotalDeathCount desc
 
 
 
--- Showing continents with the highets dath count per population
+-- Showing continents with the highets death count per population
 
 Select continent, MAX(cast(Total_deaths as int)) as TotalDeathCount
 From PortfolioProject..CovidDeaths
