@@ -1,0 +1,293 @@
+---
+title: "COVID-19 Forecasting with Regression Trees"
+author: "Kyle Lucero"
+output: 
+  html_document:
+    number_sections: true
+    toc: true
+    theme: cosmo
+    highlight: haddock
+    code_folding: show
+---
+
+---
+
+
+Let's import some packages for data wrangling & machine learning.
+``` {r messsage = FALSE}
+library(dplyr)
+library(caret)
+library(rpart)
+```
+
+
+---
+
+# data import and cleaning 
+## training set
+
+let's read in the training set and examine it's structure
+``` {r}
+train <- read.csv("/Users/kylelucero/Downloads/train-2.csv")
+
+str(train)
+```
+
+let's convert date from categorial to date variable
+```{r}
+train$Date <- as.character(train$Date)
+train$Date <- as.Date(train$Date)
+train$Date <- as.Date(train$Date, format = "%Y-%m-%d")
+str(train)
+```
+
+train summary
+```{r}
+summary(train)
+```
+
+## Test Set
+
+let's read in the test set and examing it's structure
+```{r}
+test <- read.csv("/Users/kylelucero/Downloads/test-2.csv")
+str(test)
+```
+
+let's convert date from categorical to date variable 
+```{r}
+test$Date <- as.Date(test$Date)
+test$Date <- as.Date(test$Date, format = "%Y-%m-%d")
+str(test)
+```
+
+test summary:
+```{r}
+summary(test)
+```
+
+---
+
+## Fixing data leakage
+we notice data leakage -- some dates in 'train' and 'test' overlap, so we must remove them
+```{r}
+train <- train  %>% filter(Date < min(test$Date))
+```
+
+---
+
+# modeling and training set predictions
+## transforming outcome variables 
+**`log_ConfirmedCases`:**
+easier to work with log transformation
+```{r}
+ggplot(train, aes(x = Date, y = ConfirmedCases) ) + geom_point()
+log_ConfirmedCases <- log(train$ConfirmedCases + 1)
+```
+
+**`log_Fatalities `:**
+```{r}
+log_Fatalities <- log(train$Fatalities + 1)
+```
+
+## feature engineer:  `Day`
+the first documented date is considered day 0, add day column
+
+**Training Set:**
+```{r}
+train$Day <- as.integer(train$Date - min(train$Date) )
+
+summary(train$Day)
+```
+
+**Test Set:**
+```{r}
+test$Day <- as.integer(test$Date - min(test$Date) )
+summary(test$Day)
+```
+
+
+## regression trees (CART)
+let's specify our 5-fold cross validation, and define our parameter grid
+```{r}
+#cross validation is a resampling procedure used to evaluate machine learning models on data sample
+#k is number of groups the data is split into
+#used to estimate skill of model to work on unseen data
+num_folds <- trainControl(method = "cv", number = 5) # specify 5-fold cross validation
+parameter_grid <- expand.grid(.cp = seq(0, 0.01, 0.001 )) #explore the values of `cp` b/w 0 and 0.01
+```
+
+### model 1: predicting `confirmed cases` 
+
+**Outcome variable:** `log_ConfirmedCases`
+
+**Features:**
+
+- `Province.State`
+- `Country.Region`
+- `Lat`
+- `Long`
+- `Day` 
+
+First let's perform a grid search.
+```{r}
+grid_search_1 <- train(
+  log_ConfirmedCases ~ Province.State + Country.Region + Lat + Long + Day,  
+  data = train, 
+  method = "rpart", # CART algorithm
+  trControl = num_folds, 
+  tuneGrid = parameter_grid,
+)
+
+print(grid_search_1)
+```
+
+The best value of `cp` is `0`. lets take this value to train our regression tree
+```{r}
+tree_1 <- rpart(
+  log_ConfirmedCases ~ Province.State + Country.Region + Lat + Long + Day,
+  data = train, 
+  cp = 0
+)
+```
+
+**variable importance:**
+```{r}
+tree_1_summary <- data.frame(
+  variable = names(tree_1$variable.importance), 
+  importance = tree_1$variable.importance, 
+  stringsAsFactors = FALSE, 
+  row.names = NULL
+) %>% 
+  arrange(desc(importance))
+
+tree_1_summary
+#state and country is most important
+```
+
+**Training set predictions:**
+```{r}
+train$Pred_1 <- exp(predict(tree_1, newdata = train) ) -1 
+summary(train$Pred_1)
+#our predictions from training on the train data set
+```
+**training set RMSLE (root mean squared logarithmic error):**
+$RMSLE = \sqrt {\frac{1}{n} \sum_{i = 1}^{n} {(log(p_i + 1) - log(a_i + 1))^2}}$
+
+where:
+
+- $n$ is the total number of observations
+- $p_i$ is each prediction
+- $a_i$ is each actual value
+- $log(x)$ is the natural logarithm of $x$
+```{r}
+#root mean squared logarithmic error
+#metric to measure ratio of actual vs predicted, not the absolute diff between actual and predicted
+#good for targets that have exponential growth 
+#penalizes underestimates 
+```
+let's calculate RMSLE for  `confirmed cases` column.
+```{r}
+RMSLE_1 <- sqrt( mean( (log(train$Pred_1 + 1 ) - log(train$ConfirmedCases + 1 ) )^2 ) )
+RMSLE_1
+```
+## model 2: predicting `Fatalities` 
+
+**Outcome variable:** `log_Fatalities`
+
+**Features:**
+
+- `Province.State`
+- `Country.Region`
+- `Lat`
+- `Long`
+- `Day` 
+- `ConfirmedCases`
+
+**Notes:** we must use predicted confirmed cases from model 1 as a feature
+
+First let's perform a grid search.
+```{r}
+grid_search_2 <- train(
+  log_Fatalities ~ Province.State + Country.Region + Lat + Long + Day + ConfirmedCases,  
+  data = train, 
+  method = "rpart", # CART algorithm
+  trControl = num_folds, 
+  tuneGrid = parameter_grid,
+)
+
+print(grid_search_2)
+```
+
+The best value of `cp` is `0`. lets take this value to train our regression tree
+```{r}
+tree_2 <- rpart(
+  log_Fatalities ~ Province.State + Country.Region + Lat + Long + Day + ConfirmedCases,
+  data = train, 
+  cp = 0
+)
+```
+
+**variable importance:**
+```{r}
+tree_2_summary <- data.frame(
+  variable = names(tree_2$variable.importance), 
+  importance = tree_2$variable.importance, 
+  stringsAsFactors = FALSE, 
+  row.names = NULL
+) %>% 
+  arrange(desc(importance))
+
+tree_2_summary
+#ConfirmedCases and Province.State most important
+```
+
+**Training set predictions:**
+```{r}
+train$Pred_2 <- exp(predict(tree_2, newdata = train) ) -1 
+summary(train$Pred_2)
+#our predictions from training on the train data set
+```
+
+**training set RMSLE (root mean squared logarithmic error):** measure how well it did
+
+let's calculate RMSLE for  `Fatalities` column.
+```{r}
+RMSLE_2 <- sqrt( mean( (log(train$Pred_2 + 1 ) - log(train$Fatalities + 1 ) )^2 ) )
+RMSLE_2
+```
+
+## average training set RMSLE
+
+```{r}
+(RMSLE_1 + RMSLE_2) / 2
+```
+
+---
+
+Test set predictions and submission
+
+## model1: predicting confirmed cases
+```{r}
+test$ConfirmedCases <- exp(predict(tree_1, newdata = test) ) -1 
+summary(test$ConfirmedCases)
+```
+
+## model2: predictitng fatalities
+```{r}
+test$Fatalities <- exp(predict(tree_2, newdata = test) ) -1 
+summary(test$Fatalities)
+```
+
+## Submission
+
+Let's generate the `submission` dataset.
+```{r}
+submission <- test %>% select(ForecastId, ConfirmedCases, Fatalities)
+```
+
+Finally, let's write it to disk.
+```{r}
+write.csv(submission, file = "submission.csv", row.names = FALSE)
+```
+
