@@ -1,0 +1,123 @@
+
+##importing flight data##
+
+load data local infile '/Users/kylelucero/Downloads/Clean_Dataset.csv' 
+into table Clean_Dataset
+fields terminated by ','
+enclosed by '"'
+lines terminated by '\n'
+
+
+
+
+
+## AIRLINE CODE ##
+
+##CREATE THE TABLE##
+mysql> CREATE TABLE Clean_Dataset (
+    -> Serial_Number int,
+    -> airline varchar(255),
+    -> flight varchar(255),
+    -> source_city varchar(255),
+    -> depature_time varchar(255), 
+    -> stops varchar(255),
+    -> arrival_time varchar(255),
+    -> destination_city varchar(255), 
+    -> class varchar(255),
+    -> duration decimal(5,5)
+    -> ,
+    -> Days_between_booking_travel int,
+    -> price int
+    -> )
+    -> ;
+
+##FILL IN TABLE WITH DATA##
+mysql> load data local infile '/Users/kylelucero/Downloads/Clean_Dataset.csv' 
+    -> into table Clean_Dataset
+    -> fields terminated by ','
+    -> enclosed by '"'
+    -> lines terminated by '\n';
+Query OK, 300154 rows affected, 65535 warnings (3.91 sec)
+Records: 300154  Deleted: 0  Skipped: 0  Warnings: 300027
+ 
+
+
+
+
+
+## a) does price vary with airlines? ##
+## Yes, on average Vistara is the most expensive airline ##
+
+## FIND MAX PRICE BY AIRLINE ##
+mysql> SELECT airline, MAX(price) FROM Clean_Dataset GROUP BY airline ORDER BY MAX(price);
+
+## FIND MIN PRICE BY AIRLINE ##
+mysql> SELECT airline, MIN(price) FROM Clean_Dataset GROUP BY airline ORDER BY MIN(price);
+
+## FIND AVG PRICE BY AIRLINE ##
+mysql> SELECT airline, AVG(price) FROM Clean_Dataset GROUP BY airline ORDER BY AVG(price);
+
+
+
+
+
+## b) how does booking flight only 1 to 2 days before departure affect price? ##
+## booking within one week of travel is the worst on average, however 1 day before is only 15th worst. ##
+
+## investigating when booking the flight impacts price ##
+mysql> SELECT  Days_between_booking_travel, AVG(price) FROM Clean_Dataset GROUP BY Days_between_booking_travel ORDER BY AVG(price) DESC;
+
+
+
+
+
+## c) Does ticket price change based on the departure time and arrival time? ##
+## the most expensive combo is departing at Night and arriving in the evening ##
+
+## investigated avg price grouped by depature/arrival times ##
+## query for most expensive arrival times ##
+mysql> SELECT arrival_time, AVG(price) FROM Clean_Dataset GROUP BY arrival_time ORDER BY AVG(price) DESC;
+
+## query for most expensive departure times ##
+mysql> SELECT departure_time, AVG(price) FROM Clean_Dataset GROUP BY departure_time ORDER BY AVG(price) DESC;
+
+## query for most expensive combo of arrival/departure time ##
+mysql> SELECT departure_time, arrival_time, AVG(price) FROM Clean_Dataset GROUP BY departure_time,arrival_time ORDER BY AVG(price) DESC;
+
+
+
+
+
+## d) How the price changes with change in Source and Destination? ##
+## Chennai to Bangalore is the most expensive ##
+
+## similar to b, investigate how source and destination impact price ##
+
+## query for most expensive source city ##
+mysql> SELECT source_city, AVG(price)
+    -> FROM Clean_Dataset
+    -> GROUP BY source_city
+    -> ORDER BY AVG(price) DESC; 
+
+## query for most expensive destination ##
+mysql> SELECT destination_city, AVG(price)
+    -> FROM Clean_Dataset
+    -> GROUP BY destination_city
+    -> ORDER BY AVG(price) DESC;
+
+## query for most expensive source & destination city combo ##
+mysql> SELECT source_city, destination_city, AVG(price)
+    -> FROM Clean_Dataset
+    -> GROUP BY source_city, destination_city
+    -> ORDER BY AVG(price) DESC;
+
+
+
+
+## e) How does the ticket price vary between Economy and Business class? ##
+## business class more expensive ##
+## query for avg price of business vs economy ##
+mysql> SELECT class, AVG(price)
+    -> FROM Clean_Dataset
+    -> GROUP BY class
+    -> ORDER BY AVG(price) DESC;
