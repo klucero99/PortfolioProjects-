@@ -218,7 +218,7 @@ SELECT AVG(Avg_Covered_Charges)
 FROM Inpatient 
 WHERE Provider_ID = '310001' 
 ## average cost of all drg's at Nb is 75936.2020 ##
-## hackensack is just cheaper on average ##  
+
 
 
 
